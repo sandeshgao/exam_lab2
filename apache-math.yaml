@@ -1,0 +1,45 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secret-q8
+  namespace: math
+  labels:
+    app: apache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apache
+  template:
+    metadata:
+      labels:
+        app: apache
+    spec:
+      containers:
+      - name: httpd
+        image: registry.ocp4.example.com:8443/rhscl/httpd-24-rhel7
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "170Gi"
+            cpu: "250m"
+          limits:
+            memory: "200Gi"
+            cpu: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: secret-q8
+  namespace: math
+  labels:
+    app: apache
+spec:
+  selector:
+    app: Apache
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
