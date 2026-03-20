@@ -77,7 +77,7 @@ oc new-app --name dbapp1 registry.ocp4.example.com:8443/rhscl/httpd-24-rhel7 -n 
 oc new-app --name checkerapp2 registry.ocp4.example.com:8443/rhscl/httpd-24-rhel7 -n checker
 oc create -f deny-all-ingress.yaml
 #oc label pod dbapp1-<podname> network.openshift.io/policy-group=mysql -n database
-#oc label pod checkerapp2-<podname> env=db -n checker
+#oc label pod checkerapp2-<podname> devlopment=webserver -n checker
 
 #Question 21
 #NA
