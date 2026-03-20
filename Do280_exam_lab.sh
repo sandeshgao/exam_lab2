@@ -49,7 +49,7 @@ oc new-app --name serviceaccount-anyuid-q11 registry.ocp4.example.com:8443/rhscl
 
 #Question 13
 oc new-project bluebook
-oc apply -f apache-bluebook-deploy.yaml
+oc apply -f apache-bluebook-deploy.yaml -n bluebook
 
 #Question 14
 #NA
