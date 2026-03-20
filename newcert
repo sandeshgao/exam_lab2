@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# newcert: generate a self-signed certificate and private key using openssl
+# Usage:
+#   ./newcert "/C=US/ST=North Carolina/L=Raleigh/O=RedHat/CN=example.com"
+# Optional flags:
+#   -d DAYS   Validity days (default: 825)
+#   -b BITS   RSA key size (default: 2048)
+#   -o DIR    Output directory (default: ./certs)
+#   -n NAME   Base name for files (default: derived from CN)
+#   -s        Create a subjectAltName (SAN) with DNS=CN (recommended)
+#
+# Outputs:
+#   <name>.key, <name>.crt, <name>.csr (and optionally <name>.cnf)
+
+DAYS=825
+BITS=2048
+OUTDIR="./certs"
+NAME=""
+ADD_SAN=0
+
+usage() {
+  cat <<'EOF'
+Usage:
+  newcert [options] "/C=US/ST=State/L=City/O=Org/OU=Unit/CN=example.com"
+
+Options:
+  -d DAYS   Validity days (default: 825)
+  -b BITS   RSA key size (default: 2048)
+  -o DIR    Output directory (default: ./certs)
+  -n NAME   Base name for output files (default: derived from CN)
+  -s        Add subjectAltName=DNS:CN (recommended)
+  -h        Show help
+
+Example:
+  ./newcert -s "/C=US/ST=North Carolina/L=Raleigh/O=RedHat/CN=quart.apps.ocp4.example.com"
+EOF
+}
+
+while getopts ":d:b:o:n:sh" opt; do
+  case "$opt" in
+    d) DAYS="$OPTARG" ;;
+    b) BITS="$OPTARG" ;;
+    o) OUTDIR="$OPTARG" ;;
+    n) NAME="$OPTARG" ;;
+    s) ADD_SAN=1 ;;
+    h) usage; exit 0 ;;
+    \?) echo "Unknown option: -$OPTARG" >&2; usage; exit 2 ;;
+    :)  echo "Option -$OPTARG requires an argument." >&2; usage; exit 2 ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+SUBJECT="${1:-}"
+
+# If subject not passed, prompt for it
+if [[ -z "$SUBJECT" ]]; then
+  echo "Enter subject DN (example: /C=US/ST=State/L=City/O=Org/CN=example.com)"
+  read -r SUBJECT
+fi
+
+if [[ -z "$SUBJECT" ]]; then
+  echo "ERROR: Subject DN is required." >&2
+  exit 1
+fi
+
+# Extract CN from subject (best effort)
+CN="$(printf '%s' "$SUBJECT" | sed -n 's#.*\/CN=\([^/]*\).*#\1#p')"
+if [[ -z "$CN" ]]; then
+  echo "ERROR: Could not find CN in subject. Make sure you include /CN=..." >&2
+  exit 1
+fi
+
+# Derive name if not provided: replace non-safe chars with underscores
+if [[ -z "$NAME" ]]; then
+  NAME="$(printf '%s' "$CN" | sed 's/[^A-Za-z0-9._-]/_/g')"
+fi
+
+mkdir -p "$OUTDIR"
+
+KEY="$OUTDIR/$NAME.key"
+CRT="$OUTDIR/$NAME.crt"
+CSR="$OUTDIR/$NAME.csr"
+CNF="$OUTDIR/$NAME.cnf"
+
+# Build openssl arguments for SAN if requested
+if [[ "$ADD_SAN" -eq 1 ]]; then
+  cat > "$CNF" <<EOF
+[ req ]
+default_bits       = $BITS
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+req_extensions     = req_ext
+
+[ dn ]
+# Subject is still supplied on command line for simplicity; dn section not used.
+# This file mainly provides SAN.
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = $CN
+EOF
+
+  # Generate key + cert (self-signed) with SAN
+  openssl req -new -newkey "rsa:$BITS" -nodes \
+    -keyout "$KEY" \
+    -x509 -days "$DAYS" -sha256 \
+    -subj "$SUBJECT" \
+    -out "$CRT" \
+    -extensions req_ext -config "$CNF"
+
+  # Also write CSR for completeness (optional but handy)
+  openssl req -new -key "$KEY" -subj "$SUBJECT" \
+    -out "$CSR" -reqexts req_ext -config "$CNF"
+
+else
+  # Generate key + cert (self-signed) without SAN
+  openssl req -new -newkey "rsa:$BITS" -nodes \
+    -keyout "$KEY" \
+    -x509 -days "$DAYS" -sha256 \
+    -subj "$SUBJECT" \
+    -out "$CRT"
+
+  # CSR (optional)
+  openssl req -new -key "$KEY" -subj "$SUBJECT" -out "$CSR"
+fi
+
+chmod 600 "$KEY"
+
+echo "✅ Generated:"
+echo "  Key : $KEY"
+echo "  Cert: $CRT"
+echo "  CSR : $CSR"
+if [[ "$ADD_SAN" -eq 1 ]]; then
+  echo "  Conf: $CNF (SAN enabled)"
+fi
+
+echo
+echo "Inspect cert:"
+echo "  openssl x509 -in \"$CRT\" -noout -text | sed -n '1,40p'"
