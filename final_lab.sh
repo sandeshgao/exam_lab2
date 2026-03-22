@@ -39,5 +39,7 @@ oc create deployment checker --image=registry.ocp4.example.com:8443/redhattraini
 
 #Keep deny-all.yaml in /root
 oc create -f deny_all_ingress.yaml -n database
-
 oc new-app --name=db --image=registry.ocp4.example.com:8443/redhattraining/hello-world-nginx -n database
+oc label pods --all networking.openshift.io/policy-worker=mysql -n database
+oc label pods --all deployment-webserver -n checker
+oc label ns/checker team=devsecops
